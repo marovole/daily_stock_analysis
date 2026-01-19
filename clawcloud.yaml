@@ -1,0 +1,81 @@
+# ClawCloud 应用配置
+# 此文件用于 ClawCloud 平台识别应用类型和启动命令
+
+app:
+  name: daily_stock_analysis
+  type: python
+  version: 1.0.0
+
+runtime:
+  python_version: "3.11"
+  pip_version: latest
+
+build:
+  command: pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+  timeout: 300
+
+start: |
+  python main.py --schedule --webui
+
+environment:
+  required:
+    - STOCK_LIST
+    - GEMINI_API_KEY
+  optional:
+    - WECHAT_WEBHOOK_URL
+    - FEISHU_WEBHOOK_URL
+    - TELEGRAM_BOT_TOKEN
+    - TELEGRAM_CHAT_ID
+    - EMAIL_SENDER
+    - EMAIL_PASSWORD
+    - CUSTOM_WEBHOOK_URLS
+    - TAVILY_API_KEYS
+    - BOCHA_API_KEYS
+    - SERPAPI_API_KEYS
+    - TUSHARE_TOKEN
+    - SCHEDULE_ENABLED
+    - SCHEDULE_TIME
+    - MARKET_REVIEW_ENABLED
+    - LOG_LEVEL
+    - MAX_WORKERS
+    - WEBUI_ENABLED
+    - WEBUI_HOST
+    - WEBUI_PORT
+    - WEBUI_USERNAME
+    - WEBUI_PASSWORD
+
+volumes:
+  - mount_path: /app/data
+    size: 100
+    type: storage
+  - mount_path: /app/logs
+    size: 500
+    type: storage
+  - mount_path: /app/reports
+    size: 1024
+    type: storage
+
+ports:
+  - container_port: 8000
+    protocol: tcp
+    name: webui
+
+health_check:
+  path: /
+  initial_delay_seconds: 30
+  period_seconds: 30
+  timeout_seconds: 10
+  failure_threshold: 3
+
+resources:
+  cpu: 1000
+  memory: 512
+  instances: 1
+
+regions:
+  - default
+
+tags:
+  - stock-analysis
+  - python
+  - docker
