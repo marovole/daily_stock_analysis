@@ -26,6 +26,9 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com
 # 复制应用代码
 COPY *.py ./
 COPY data_provider/ ./data_provider/
+COPY .env.example ./
+COPY entrypoint.sh ./
+RUN chmod +x /app/entrypoint.sh
 
 # 创建数据目录
 RUN mkdir -p /app/data /app/logs /app/reports
@@ -34,6 +37,8 @@ RUN mkdir -p /app/data /app/logs /app/reports
 ENV PYTHONUNBUFFERED=1
 ENV LOG_DIR=/app/logs
 ENV DATABASE_PATH=/app/data/stock_analysis.db
+# 持久化配置文件路径（ClawCloud 部署使用）
+ENV ENV_FILE=/app/data/.env
 
 # 数据卷（持久化数据）
 VOLUME ["/app/data", "/app/logs", "/app/reports"]
@@ -42,5 +47,5 @@ VOLUME ["/app/data", "/app/logs", "/app/reports"]
 HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
-# 默认命令（可被覆盖）
-CMD ["python", "main.py", "--schedule"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["--schedule", "--webui"]

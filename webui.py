@@ -12,9 +12,11 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import html
 import os
 import re
+import secrets
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +27,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 _ENV_PATH = os.getenv("ENV_FILE", ".env")
+_AUTH_USERNAME = os.getenv("WEBUI_USERNAME", "")
+_AUTH_PASSWORD = os.getenv("WEBUI_PASSWORD", "")
 
 
 def _read_env_text(path: str) -> str:
@@ -51,7 +55,9 @@ def _extract_stock_list(env_text: str) -> str:
         if m:
             raw = m.group("value").strip()
             # strip surrounding quotes
-            if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
+            if (raw.startswith('"') and raw.endswith('"')) or (
+                raw.startswith("'") and raw.endswith("'")
+            ):
                 raw = raw[1:-1]
             return raw
     return ""
@@ -92,9 +98,36 @@ def _set_stock_list(env_text: str, new_value: str) -> str:
     return out + ("\n" if trailing_newline else "")
 
 
+def _check_auth(headers) -> bool:
+    if not _AUTH_USERNAME or not _AUTH_PASSWORD:
+        return True
+
+    auth_header = headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        return False
+
+    try:
+        encoded = auth_header[6:]
+        decoded = base64.b64decode(encoded).decode("utf-8")
+        username, password = decoded.split(":", 1)
+        return secrets.compare_digest(
+            username, _AUTH_USERNAME
+        ) and secrets.compare_digest(password, _AUTH_PASSWORD)
+    except Exception:
+        return False
+
+
+def _send_auth_required(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_response(HTTPStatus.UNAUTHORIZED)
+    handler.send_header("WWW-Authenticate", 'Basic realm="Stock Analyzer WebUI"')
+    handler.send_header("Content-Type", "text/html; charset=utf-8")
+    handler.end_headers()
+    handler.wfile.write(b"<h1>401 Unauthorized</h1><p>Please login.</p>")
+
+
 def _page(current_value: str, message: str | None = None) -> bytes:
     safe_value = html.escape(current_value)
-    
+
     # Toast notifications
     toast_html = ""
     if message:
@@ -297,6 +330,10 @@ def _page(current_value: str, message: str | None = None) -> bytes:
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
+        if not _check_auth(self.headers):
+            _send_auth_required(self)
+            return
+
         if self.path not in ("/", ""):
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -312,6 +349,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_POST(self) -> None:
+        if not _check_auth(self.headers):
+            _send_auth_required(self)
+            return
+
         if self.path != "/update":
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -332,13 +373,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def log_message(self, fmt: str, *args) -> None:
+    def log_message(self, format: str, *args) -> None:
         # quiet default http.server logging
         return
 
 
 def run_server_in_thread(host: str = "127.0.0.1", port: int = 8000):
     """Start the WebUI server in a background thread."""
+
     def serve():
         server = ThreadingHTTPServer((host, port), _Handler)
         logger.info(f"WebUI 已启动: http://{host}:{port}")
@@ -349,7 +391,7 @@ def run_server_in_thread(host: str = "127.0.0.1", port: int = 8000):
             logger.error(f"WebUI 发生错误: {e}")
         finally:
             server.server_close()
-            
+
     t = threading.Thread(target=serve, daemon=True)
     t.start()
     return t
