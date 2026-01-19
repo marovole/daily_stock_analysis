@@ -82,4 +82,4 @@ jobs:
       - name: 🐳 构建镜像
         run: |
           docker build -t stock-analysis:test .
-          docker run --rm stock-analysis:test python -c "print('✅ Docker OK')"
+          docker run --rm --entrypoint python stock-analysis:test -c "print('✅ Docker OK')"
